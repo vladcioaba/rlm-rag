@@ -1,0 +1,11 @@
+# <type>: <subject>  (<= 70 chars; imperative; no trailing period)
+#
+# <body>  (wrap at 72)
+#
+# - what changed and why (not how — the diff shows how)
+# - any user-visible API change
+# - tests added / removed
+#
+# DO NOT add Co-Authored-By trailers for AI assistants. Authorship is
+# this commit's `Author:` field. AI involvement, if any, belongs in the
+# PR description, not in version-control metadata.

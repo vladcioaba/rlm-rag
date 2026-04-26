@@ -1,0 +1,51 @@
+[project]
+name = "rlm-rag"
+version = "0.1.0a1"
+description = "Code-aware RAG using RLM-style sub-calls for generation."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{name = "Vlad Cioaba"}]
+keywords = ["rag", "llm", "retrieval", "code-search", "anthropic"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "sentence-transformers>=2.2",
+  # numpy>=2.0 + the torch wheels currently available on PyPI = "Numpy is not
+  # available" at embed time. Pin <2 until the torch/numpy story stabilizes.
+  "numpy>=1.20,<2",
+  # Pin to dodge an upstream regression: transformers >= 4.50 introduced
+  # an `nn.Module` reference in transformers/integrations/accelerate.py
+  # without importing `nn`, which crashes sentence-transformers on import.
+  "transformers<4.50",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+# Optional faster vector search for >50K chunks. Skip unless you need it.
+faiss = ["faiss-cpu>=1.7"]
+# Optional tree-sitter parsers for proper C++ and C# extraction.
+# Without this, those languages fall back to the regex extractors.
+treesitter = [
+  "tree-sitter>=0.23",
+  "tree-sitter-cpp>=0.23",
+  "tree-sitter-c-sharp>=0.23",
+]
+# Cross-encoder reranking is built into sentence-transformers, so no extra dep.
+
+[project.scripts]
+rlm-rag = "rlm_rag.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/vladcioaba/rlm-rag"
+Issues = "https://github.com/vladcioaba/rlm-rag/issues"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rlm_rag*"]
