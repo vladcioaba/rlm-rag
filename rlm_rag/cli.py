@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -67,8 +68,67 @@ def _add_review_flags(p: argparse.ArgumentParser) -> None:
                    help="Max review-and-regenerate cycles (default: 1, max: 5)")
 
 
-def _store_path(root: Path) -> Path:
+def _store_in_project(root: Path) -> Path:
     return root / ".rlm-rag" / "index.db"
+
+
+def _store_in_user(root: Path) -> Path:
+    # Hash the absolute path so two repos sharing a basename don't collide
+    # and a moved repo gets a fresh slot rather than reusing a stale index.
+    h = hashlib.sha1(str(root).encode()).hexdigest()[:8]
+    return Path.home() / ".rlm-rag" / "projects" / f"{root.name}-{h}" / "index.db"
+
+
+def _find_existing_store(root: Path) -> Path | None:
+    p = _store_in_project(root)
+    if p.exists():
+        return p
+    p = _store_in_user(root)
+    if p.exists():
+        return p
+    return None
+
+
+def _resolve_index_path(root: Path, location: str | None) -> Path:
+    """Pick where the index lives. If one already exists, use it. Otherwise
+    honor `location` (project|user), or prompt when running interactively,
+    or default to in-project for non-interactive invocations.
+    """
+    existing = _find_existing_store(root)
+    if existing is not None:
+        return existing
+    if location == "project":
+        return _store_in_project(root)
+    if location == "user":
+        return _store_in_user(root)
+    if not sys.stdin.isatty():
+        return _store_in_project(root)
+    in_p = _store_in_project(root)
+    in_u = _store_in_user(root)
+    print(f"\nNo rlm-rag index found for {root}.")
+    print("Where should it live?")
+    print(f"  [1] In the project: {in_p.parent}")
+    print(f"  [2] In your home:   {in_u.parent}")
+    while True:
+        choice = (input("Choose [1/2] (default 1): ").strip() or "1").lower()
+        if choice in ("1", "p", "project"):
+            return in_p
+        if choice in ("2", "u", "user", "home"):
+            return in_u
+        print("please answer 1 or 2")
+
+
+def _require_store(root: Path) -> Path | None:
+    """For read-only commands: locate an existing index or print a hint."""
+    p = _find_existing_store(root)
+    if p is None:
+        print(
+            f"error: no rlm-rag index found for {root}\n"
+            f"hint:  rlm-rag index --root {root}",
+            file=sys.stderr,
+        )
+        return None
+    return p
 
 
 def cmd_index(args: argparse.Namespace) -> int:
@@ -77,7 +137,8 @@ def cmd_index(args: argparse.Namespace) -> int:
         print(f"error: --root must be a directory: {root}", file=sys.stderr)
         return 2
 
-    store = ChunkStore(_store_path(root))
+    db_path = _resolve_index_path(root, args.index_location)
+    store = ChunkStore(db_path)
     embedder = None if args.graph_only else Embedder()
 
     def progress(rel: str, action: str) -> None:
@@ -93,16 +154,14 @@ def cmd_index(args: argparse.Namespace) -> int:
     print(f"  removed:   {len(result.removed)}")
     print(f"  skipped:   {len(result.skipped)}")
     print(f"  chunks:    {result.total_chunks}")
-    print(f"  index at:  {_store_path(root)}")
+    print(f"  index at:  {db_path}")
     return 0
 
 
 def cmd_query(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    db = _store_path(root)
-    if not db.exists():
-        print(f"error: no index found at {db}\nhint:  rlm-rag index --root {root}",
-              file=sys.stderr)
+    db = _require_store(root)
+    if db is None:
         return 1
 
     store = ChunkStore(db)
@@ -157,10 +216,8 @@ def cmd_query(args: argparse.Namespace) -> int:
 
 def cmd_iterate(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    db = _store_path(root)
-    if not db.exists():
-        print(f"error: no index found at {db}\nhint:  rlm-rag index --root {root}",
-              file=sys.stderr)
+    db = _require_store(root)
+    if db is None:
         return 1
 
     store = ChunkStore(db)
@@ -193,10 +250,8 @@ def cmd_iterate(args: argparse.Namespace) -> int:
 
 def cmd_pr(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    db = _store_path(root)
-    if not db.exists():
-        print(f"error: no index found at {db}\nhint:  rlm-rag index --root {root}",
-              file=sys.stderr)
+    db = _require_store(root)
+    if db is None:
         return 1
 
     # Source the diff: explicit file, stdin, or `git diff <rev>`.
@@ -227,9 +282,8 @@ def cmd_pr(args: argparse.Namespace) -> int:
 
 def cmd_stats(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    db = _store_path(root)
-    if not db.exists():
-        print(f"no index at {db}", file=sys.stderr)
+    db = _require_store(root)
+    if db is None:
         return 1
     store = ChunkStore(db)
     print(f"chunks: {store.count()}")
@@ -239,10 +293,8 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 def cmd_graph(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
-    db = _store_path(root)
-    if not db.exists():
-        print(f"error: no index found at {db}\nhint:  rlm-rag index --root {root}",
-              file=sys.stderr)
+    db = _require_store(root)
+    if db is None:
         return 1
 
     out = Path(args.output).resolve()
@@ -281,6 +333,11 @@ def main(argv: list[str] | None = None) -> int:
     pi.add_argument("--graph-only", action="store_true",
                     help="Skip embeddings; build only the symbol/import/call graph "
                          "(use this when you only want `rlm-rag graph` later, not `query`)")
+    pi.add_argument("--index-location", choices=["project", "user"], default=None,
+                    help="Where to put the index on first run. 'project' = "
+                         "<root>/.rlm-rag/, 'user' = ~/.rlm-rag/projects/<name>-<hash>/. "
+                         "If omitted and stdin is a tty you'll be prompted; "
+                         "non-interactive runs default to 'project'.")
     pi.set_defaults(func=cmd_index)
 
     pq = sub.add_parser("query", help="Single-shot retrieve → triage → synthesize")

@@ -199,9 +199,8 @@ def _python_imports(tree: ast.AST, file_path: str = "") -> list[str]:
 
 def _python_package_parts(file_path: str) -> tuple[str, ...]:
     """Walk up from file_path collecting directories that contain an
-    __init__.py. Returns ('opencocosstudio', 'ui') for
-    'opencocosstudio/ui/mainwindow.py'. Returns () if file has no
-    __init__.py ancestor.
+    __init__.py. Returns ('myapp', 'ui') for 'myapp/ui/mainwindow.py'.
+    Returns () if file has no __init__.py ancestor.
     """
     p = Path(file_path)
     if not p.is_absolute():

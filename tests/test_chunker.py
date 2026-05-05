@@ -78,11 +78,11 @@ def test_chunk_python_file_returns_empty_for_empty_file(tmp_path):
 
 
 def test_relative_imports_resolved_to_absolute_paths(tmp_path):
-    """from .sibling import X inside opencocosstudio/ui/mainwindow.py should
-    resolve to opencocosstudio.ui.sibling.X — i.e. the package context is
+    """from .sibling import X inside myapp/ui/mainwindow.py should
+    resolve to myapp.ui.sibling.X — i.e. the package context is
     detected from __init__.py ancestors.
     """
-    pkg_root = tmp_path / "opencocosstudio"
+    pkg_root = tmp_path / "myapp"
     ui = pkg_root / "ui"
     ui.mkdir(parents=True)
     (pkg_root / "__init__.py").write_text("")
@@ -96,6 +96,6 @@ def test_relative_imports_resolved_to_absolute_paths(tmp_path):
     )
     chunks = chunk_python_file(f)
     imports = chunks[0].imports
-    assert "opencocosstudio.ui.sibling.x" in imports
-    assert "opencocosstudio.model.csd.load_csd" in imports
+    assert "myapp.ui.sibling.x" in imports
+    assert "myapp.model.csd.load_csd" in imports
     assert "os" in imports  # absolute imports unchanged

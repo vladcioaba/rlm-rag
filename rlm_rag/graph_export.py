@@ -3,7 +3,7 @@
 Two granularities:
   - file:    one node per indexed source file; edges = imports (file → module).
              Best for small codebases (<100 files).
-  - package: nodes aggregated to top-level directory (e.g. `opencocosstudio/ui`
+  - package: nodes aggregated to top-level directory (e.g. `myapp/ui`
              becomes the `ui` package). Best for medium-to-large codebases.
 
 Edge weights = number of imports between the two nodes (after aggregation).
@@ -36,7 +36,7 @@ class GraphStats:
 
 def _package_for(rel_path: str, depth: int = 1) -> str:
     """Return the top-N path components as the package id, e.g.
-    'opencocosstudio/ui/widgets/foo.py' with depth=2 → 'opencocosstudio/ui'.
+    'myapp/ui/widgets/foo.py' with depth=2 → 'myapp/ui'.
     Files at the root get 'root'.
     """
     parts = Path(rel_path).parts

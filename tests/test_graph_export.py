@@ -10,19 +10,19 @@ from rlm_rag.store import ChunkStore
 # ---------- helpers -----------------------------------------------------
 
 def test_package_for_simple():
-    assert _package_for("opencocosstudio/ui/widgets/foo.py", depth=1) == "opencocosstudio"
-    assert _package_for("opencocosstudio/ui/widgets/foo.py", depth=2) == "opencocosstudio/ui"
+    assert _package_for("myapp/ui/widgets/foo.py", depth=1) == "myapp"
+    assert _package_for("myapp/ui/widgets/foo.py", depth=2) == "myapp/ui"
     assert _package_for("standalone.py", depth=1) == "root"
 
 
 def test_module_to_node_resolves_internal_to_package():
     indexed = {
-        "opencocosstudio/ui/widgets/canvas.py",
-        "opencocosstudio/model/scene.py",
+        "myapp/ui/widgets/canvas.py",
+        "myapp/model/scene.py",
     }
     # Internal: dotted module → maps onto the right indexed file → package id.
-    node = _module_to_node("opencocosstudio.model.scene", indexed, depth=1)
-    assert node == "opencocosstudio"
+    node = _module_to_node("myapp.model.scene", indexed, depth=1)
+    assert node == "myapp"
 
 
 def test_module_to_node_returns_none_for_external():

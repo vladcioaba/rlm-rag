@@ -91,8 +91,12 @@ Copilot is an editor product, not a programmable backend — there's no general-
 ## Use
 
 ```bash
-# 1. Index your codebase. Stores at <root>/.rlm-rag/index.db
+# 1. Index your codebase. On the first run, you'll be asked where to put the
+#    index — either inside the project at <root>/.rlm-rag/index.db, or in your
+#    home dir at ~/.rlm-rag/projects/<name>-<hash>/index.db. Pick non-interactively
+#    with --index-location project|user.
 rlm-rag index --root /path/to/repo
+rlm-rag index --root /path/to/repo --index-location user
 
 # (Faster: graph-only mode skips embeddings — useful when you only want
 # `rlm-rag graph` and not `query`.)
@@ -118,8 +122,6 @@ rlm-rag graph --root /path/to/repo --output deps.dot                 # package l
 rlm-rag graph --root /path/to/repo --output deps.dot --granularity file
 rlm-rag graph --root /path/to/repo --output deps.dot --include-external
 ```
-
-See [`examples/`](examples/) for a real-world demo against OpenCocosStudio.
 
 Re-running `index` only re-embeds files whose `sha1` changed. Deleted files are pruned from chunks AND graph tables. Indexing is parallelized across files (default 8 workers) and embeddings are batched in one big call.
 

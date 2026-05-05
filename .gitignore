@@ -10,8 +10,3 @@ venv/
 build/
 dist/
 .rlm-rag/
-
-# Don't commit large rendered SVG/PNG outputs to the repo; the .dot
-# sources are tiny and human-readable, the renders can be regenerated.
-examples/*.svg
-examples/*.png
