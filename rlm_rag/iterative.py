@@ -31,11 +31,14 @@ import textwrap
 from dataclasses import dataclass, field
 from typing import Any
 
+from collections import Counter
+
 from . import _rlm_helper as rlm_helper
 from .embedder import Embedder
 from .models import ModelConfig, ModelTier, default_config
 from .retrieval import Reranker, retrieve
 from .store import ChunkStore, SearchHit
+from .vcs import VCS
 
 
 SYSTEM_PROMPT = textwrap.dedent("""\
@@ -51,6 +54,7 @@ SYSTEM_PROMPT = textwrap.dedent("""\
       {"action":"imports", "file":"path/to/file"}          modules that file imports
       {"action":"files_importing", "module":"X"}           files that import X
       {"action":"fetch",   "file":"path", "symbol":"name"} pull the source of a specific chunk
+      {"action":"blame",   "file":"path", "symbol":"name"} who-and-when last touched the chunk's lines
       {"action":"final",   "answer":"..."}                 commit to a final answer
 
     Strategy:
@@ -59,6 +63,8 @@ SYSTEM_PROMPT = textwrap.dedent("""\
       - Use `callers` and `imports` to follow the call graph when impact matters.
       - Use `fetch` to read a specific chunk when its summary in a search hit
         wasn't enough.
+      - Use `blame` when authorship/age matter (e.g. "is this code stale?",
+        "who owns this?"). Available when a Git or P4 working tree is detected.
       - Stop with `final` once you have enough evidence. Be specific in your
         answer — cite file paths and symbol names.
 
@@ -175,6 +181,38 @@ def _do_fetch(store: ChunkStore, args: dict) -> tuple[str, Any]:
     )
 
 
+def _do_blame(store: ChunkStore, vcs: VCS | None, args: dict) -> tuple[str, Any]:
+    f = args.get("file", "").strip()
+    s = args.get("symbol", "").strip()
+    if not (f and s):
+        return "blame: needs 'file' and 'symbol'", None
+    chunk = store.get_chunk(f, s)
+    if chunk is None:
+        return f"blame {f}::{s}: not found", None
+    if vcs is None:
+        return "blame: no VCS detected (need a git or p4 working tree)", None
+    try:
+        lines = vcs.blame(f, chunk.start_line, chunk.end_line)
+    except Exception as e:
+        return f"blame {f}:{chunk.start_line}-{chunk.end_line}: {e}", None
+    if not lines:
+        return f"blame {f}:{chunk.start_line}-{chunk.end_line}: (no lines)", lines
+    by_author = Counter(b.author for b in lines if b.author)
+    by_rev = Counter(b.rev for b in lines if b.rev)
+    timestamps = [b.timestamp for b in lines if b.timestamp]
+    latest = max(timestamps) if timestamps else None
+    oldest = min(timestamps) if timestamps else None
+    summary = (
+        f"blame {f}:{chunk.start_line}-{chunk.end_line} ({vcs.name}, "
+        f"{len(lines)} lines):\n"
+        f"  authors: {dict(by_author.most_common(5)) or '(none)'}\n"
+        f"  revs:    {dict(by_rev.most_common(5)) or '(none)'}\n"
+        f"  range:   {oldest.isoformat() if oldest else '?'} → "
+        f"{latest.isoformat() if latest else '?'}"
+    )
+    return summary, lines
+
+
 # ---------- parsing -----------------------------------------------------
 
 _FENCED_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
@@ -209,6 +247,7 @@ def iterative_query(
     rerank_model: str | None = None,
     initial_top_k: int = 10,
     model_config: ModelConfig | None = None,
+    vcs: VCS | None = None,
 ) -> IterativeResult:
     cfg = model_config or default_config()
     root_model = root_model or cfg.model_for(ModelTier.BALANCED)
@@ -279,6 +318,8 @@ def iterative_query(
                 summary, raw = _do_files_importing(store, action)
             elif kind == "fetch":
                 summary, raw = _do_fetch(store, action)
+            elif kind == "blame":
+                summary, raw = _do_blame(store, vcs, action)
             else:
                 summary, raw = f"unknown action: {kind!r}", None
         except Exception as e:

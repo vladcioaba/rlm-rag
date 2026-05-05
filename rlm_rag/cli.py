@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import load_config
-from .diff_mode import analyze_diff, diff_from_git
+from .diff_mode import analyze_diff
 from .embedder import Embedder
 from .graph_export import export_graph
 from .indexer import index_directory
@@ -23,6 +23,7 @@ from .iterative import iterative_query
 from .models import ModelConfig
 from .query import query as run_query
 from .store import ChunkStore
+from .vcs import GitVCS, detect_vcs
 
 
 def _models_from_args(args: argparse.Namespace) -> ModelConfig:
@@ -232,6 +233,7 @@ def cmd_iterate(args: argparse.Namespace) -> int:
         rerank_model=args.rerank_model,
         initial_top_k=args.top_k,
         model_config=_models_from_args(args),
+        vcs=detect_vcs(root),
     )
 
     if args.show_iterations:
@@ -254,16 +256,22 @@ def cmd_pr(args: argparse.Namespace) -> int:
     if db is None:
         return 1
 
-    # Source the diff: explicit file, stdin, or `git diff <rev>`.
+    # Source the diff: explicit file, stdin, or VCS rev (auto-detected).
     if args.diff_file:
         diff_text = Path(args.diff_file).read_text()
-    elif args.git:
-        diff_text = diff_from_git(root, args.git)
+    elif args.rev or args.git:
+        spec = args.rev or args.git
+        vcs = detect_vcs(root) if args.rev else GitVCS(root)
+        if vcs is None:
+            print(f"error: --rev needs a VCS at {root} (no .git, `p4 info -s` failed)",
+                  file=sys.stderr)
+            return 2
+        diff_text = vcs.diff(spec)
     else:
         diff_text = sys.stdin.read()
 
     if not diff_text.strip():
-        print("error: empty diff (use --diff-file PATH, --git REV, or pipe via stdin)",
+        print("error: empty diff (use --diff-file PATH, --rev SPEC, or pipe via stdin)",
               file=sys.stderr)
         return 2
 
@@ -370,11 +378,16 @@ def main(argv: list[str] | None = None) -> int:
     _add_model_flags(pit)
     pit.set_defaults(func=cmd_iterate)
 
-    ppr = sub.add_parser("pr", help="Analyze a diff or git rev range against the indexed call graph")
+    ppr = sub.add_parser("pr", help="Analyze a diff or VCS rev against the indexed call graph")
     ppr.add_argument("--root", required=True)
     grp = ppr.add_mutually_exclusive_group()
     grp.add_argument("--diff-file", help="Path to a unified-diff file")
-    grp.add_argument("--git", help="git rev range, e.g. 'HEAD~5..HEAD' or 'main...HEAD'")
+    grp.add_argument("--rev",
+                     help="VCS revision spec (auto-detected). "
+                          "Git: 'main...HEAD' or 'HEAD~5..HEAD'. "
+                          "P4: '12345' (submitted CL), '@=12345' (shelved), "
+                          "'12300,12345' (range).")
+    grp.add_argument("--git", help="(Deprecated; use --rev) git rev range")
     ppr.set_defaults(func=cmd_pr)
 
     ps = sub.add_parser("stats", help="Show index size")

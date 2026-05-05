@@ -48,22 +48,25 @@ class DiffImpact:
 
 # ---------- diff parsing ------------------------------------------------
 
-_FILE_RE = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
+_FILE_RE_GIT = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
+# P4 describe/diff section header: `==== <path>#<rev>` where the path is either
+# a depot path (//depot/foo) or — after P4VCS rewrites — a repo-relative path.
+_FILE_RE_P4 = re.compile(r"^==== (\S+?)#\d+", re.MULTILINE)
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", re.MULTILINE)
+_SECTION_SPLIT = re.compile(r"(?=^(?:diff --git |==== ))", re.MULTILINE)
 
 
 def parse_unified_diff(diff_text: str) -> list[DiffHunk]:
     """Parse a unified diff into per-hunk records.
 
-    Handles the common `git diff` output format. Captures only added lines
-    (we want to know what's new); deleted lines are noted in the body for
-    context but don't go into added_lines.
+    Recognizes both `git diff` (`diff --git a/... b/...`) and Perforce
+    (`==== <path>#<rev>`) section headers. Captures only added lines;
+    deleted lines stay in the body for context but don't go into added_lines.
     """
     hunks: list[DiffHunk] = []
-    # Split on file headers.
-    sections = re.split(r"(?=^diff --git )", diff_text, flags=re.MULTILINE)
+    sections = _SECTION_SPLIT.split(diff_text)
     for section in sections:
-        m = _FILE_RE.search(section)
+        m = _FILE_RE_GIT.search(section) or _FILE_RE_P4.search(section)
         if not m:
             continue
         file_path = m.group(1)

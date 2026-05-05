@@ -18,7 +18,8 @@ Code-aware RAG that uses [RLM](https://arxiv.org/abs/2512.24601)-style sub-calls
 | **Vector backend** | Default `numpy` (in-memory matrix). Optional `faiss` (auto-activated if installed and chunk count > 50K). |
 | **Retrieval** | Cosine, BM25 (in-process Okapi), or hybrid via reciprocal rank fusion. Optional cross-encoder reranker on top. |
 | **Query (one-shot)** | retrieve → parallel per-chunk relevance/summary (Haiku, with cached system prompt) → single Sonnet aggregation. |
-| **Query (iterative)** | RLM-style root loop: model emits one action per turn (`search`, `find`, `grep`, `callers`, `imports`, `files_importing`, `fetch`, `final`); bounded by `max_iterations` and an LLM-call budget. |
+| **Query (iterative)** | RLM-style root loop: model emits one action per turn (`search`, `find`, `grep`, `callers`, `imports`, `files_importing`, `fetch`, `blame`, `final`); bounded by `max_iterations` and an LLM-call budget. |
+| **VCS** | Auto-detected Git or Perforce. Powers `rlm-rag pr --rev` (diff sourcing) and the iterative loop's `blame` action (per-line authorship/age). |
 
 ## Install
 
@@ -111,9 +112,13 @@ rlm-rag query "..." --root /path/to/repo --rerank --rerank-model mxbai-rerank-ba
 rlm-rag iterate "trace what would break if I renamed authenticate" --root /path/to/repo
 rlm-rag iterate "..." --root /path/to/repo --max-iterations 10 --show-iterations
 
-# 3. PR / diff impact analysis. Three input modes:
+# 3. PR / diff impact analysis. Works with Git or Perforce; the VCS is
+#    auto-detected from --root. Three input modes:
 rlm-rag pr --root /path/to/repo --diff-file /tmp/my.diff
-rlm-rag pr --root /path/to/repo --git "main...HEAD"
+rlm-rag pr --root /path/to/repo --rev "main...HEAD"     # git rev range
+rlm-rag pr --root /path/to/repo --rev "12345"           # p4 submitted CL
+rlm-rag pr --root /path/to/repo --rev "@=12345"         # p4 shelved CL
+rlm-rag pr --root /path/to/repo --rev "12300,12345"     # p4 CL range
 git diff main | rlm-rag pr --root /path/to/repo
 
 # 4. Visualize the import/call graph. .dot output is rendered to SVG
@@ -271,6 +276,7 @@ If any of these is the blocker for your use case, open an issue.
 - [x] Persistent config file
 - [ ] Richer graph: scope-aware name resolution (genuinely months of work — not promised)
 - [x] PR / git-diff input mode
+- [x] Perforce support (diff sourcing for `pr`, blame for the iterative loop)
 - [x] Multi-provider LLM backends (Anthropic + OpenAI-compatible)
 - [ ] Native Google Gemini provider (currently usable via OpenRouter)
 - [ ] Streaming sub-call output
