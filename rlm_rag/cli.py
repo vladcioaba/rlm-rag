@@ -184,6 +184,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         review=review_enabled,
         reviewer_model=reviewer_model,
         review_rounds=review_rounds,
+        group=args.group,
     )
 
     if args.show_candidates:
@@ -192,11 +193,12 @@ def cmd_query(args: argparse.Namespace) -> int:
             c = h.chunk
             print(f"  {h.score:+.3f}  {c.file_path}:{c.start_line:>4}  "
                   f"{c.symbol_kind} {c.symbol_name}")
-        print("\n=== judged relevant ===")
-        for h, _ in result.relevant_summaries:
-            c = h.chunk
-            print(f"  {h.score:+.3f}  {c.file_path}:{c.start_line:>4}  "
-                  f"{c.symbol_kind} {c.symbol_name}")
+        print(f"\n=== judged relevant ({len(result.relevant_groups)} groups) ===")
+        for g in result.relevant_groups:
+            path = g.hits[0].chunk.file_path
+            top = max(h.score for h in g.hits)
+            symbols = ", ".join(h.chunk.symbol_name for h in g.hits)
+            print(f"  {top:+.3f}  {path}  [{symbols}]")
         print()
 
     print("=== answer ===")
@@ -359,6 +361,12 @@ def main(argv: list[str] | None = None) -> int:
     pq.add_argument("--rerank-model", default=None,
                     help="Reranker model alias or HF path (e.g. 'mxbai-rerank-base')")
     pq.add_argument("--show-candidates", action="store_true")
+    pq.add_argument("--group", choices=["file", "chunk"], default="file",
+                    help="How to batch retrieved chunks into sub-calls. "
+                         "'file' (default): one sub-call per file, all retrieved "
+                         "chunks from that file together — better local context, "
+                         "fewer calls. 'chunk': one sub-call per chunk — more "
+                         "parallel, no cross-chunk reasoning.")
     _add_model_flags(pq)
     _add_review_flags(pq)
     pq.set_defaults(func=cmd_query)

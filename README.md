@@ -17,7 +17,7 @@ Code-aware RAG that uses [RLM](https://arxiv.org/abs/2512.24601)-style sub-calls
 | **Store** | Single-file SQLite. Tables: `chunks` (text + float32 embedding BLOB), `symbols`, `imports`, `calls`. |
 | **Vector backend** | Default `numpy` (in-memory matrix). Optional `faiss` (auto-activated if installed and chunk count > 50K). |
 | **Retrieval** | Cosine, BM25 (in-process Okapi), or hybrid via reciprocal rank fusion. Optional cross-encoder reranker on top. |
-| **Query (one-shot)** | retrieve → parallel per-chunk relevance/summary (Haiku, with cached system prompt) → single Sonnet aggregation. |
+| **Query (one-shot)** | retrieve → group retrieved chunks by file → parallel per-file relevance/summary (Haiku) → single Sonnet aggregation. Pass `--group chunk` to revert to one sub-call per chunk. |
 | **Query (iterative)** | RLM-style root loop: model emits one action per turn (`search`, `find`, `grep`, `callers`, `imports`, `files_importing`, `fetch`, `blame`, `final`); bounded by `max_iterations` and an LLM-call budget. |
 | **VCS** | Auto-detected Git or Perforce. Powers `rlm-rag pr --rev` (diff sourcing) and the iterative loop's `blame` action (per-line authorship/age). |
 
